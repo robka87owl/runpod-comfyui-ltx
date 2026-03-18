@@ -1,5 +1,7 @@
 FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
+ENV PYTHONUNBUFFERED=1
+
 SHELL ["/bin/bash", "-c"]
 
 # System dependencies
@@ -9,46 +11,52 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /workspace
 
-# Clone ComfyUI
+# ── ComfyUI v0.17.2 ────────────────────────────────────────────────────────
 RUN git clone https://github.com/comfyanonymous/ComfyUI.git && \
-    cd ComfyUI && pip install -r requirements.txt
+    cd ComfyUI && git checkout v0.17.2 && \
+    pip install -r requirements.txt
 
-# Install ComfyUI-Manager
+# ── Custom Nodes ───────────────────────────────────────────────────────────
 RUN git clone https://github.com/ltdrdata/ComfyUI-Manager.git \
     ComfyUI/custom_nodes/ComfyUI-Manager && \
     cd ComfyUI/custom_nodes/ComfyUI-Manager && \
     pip install -r requirements.txt
 
-# Install ComfyUI-LTXVideo (LTXV nodes + Audio-Visual inference)
 RUN git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git \
     ComfyUI/custom_nodes/ComfyUI-LTXVideo && \
     cd ComfyUI/custom_nodes/ComfyUI-LTXVideo && \
     pip install -r requirements.txt
 
-# VideoHelperSuite (VHS_VideoCombine with audio support)
 RUN git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
     ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite && \
     cd ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite && \
     pip install -r requirements.txt
 
-# ComfyMath (CM_FloatToInt used in the workflow)
 RUN git clone https://github.com/evanspearman/ComfyMath.git \
     ComfyUI/custom_nodes/ComfyMath
 
-# Install RunPod SDK & helpers
-RUN pip install runpod requests websocket-client Pillow
+# ── Python packages ────────────────────────────────────────────────────────
+RUN pip install --no-cache-dir runpod requests websocket-client Pillow jupyterlab
 
-# Copy only what actually exists in the repo
+# ── App-Dateien ────────────────────────────────────────────────────────────
 COPY handler.py /workspace/handler.py
 COPY download_model.sh /workspace/download_model.sh
-RUN chmod +x /workspace/download_model.sh
+COPY run.sh /workspace/run.sh
+COPY notebooks/ /workspace/notebooks/
+RUN chmod +x /workspace/download_model.sh /workspace/run.sh
 
-# Set model dir as env var so handler and download script share it
+# ── Umgebung ───────────────────────────────────────────────────────────────
 ENV MODEL_DIR=/workspace/ComfyUI/models
 ENV COMFYUI_DIR=/workspace/ComfyUI
 
-# Expose ComfyUI web UI – RunPod shows this automatically in the Connect tab
-EXPOSE 8188
+# ── Ports ──────────────────────────────────────────────────────────────────
+# 8188 = ComfyUI Web UI
+# 8888 = JupyterLab (via RunPod /start.sh)
+# 22   = SSH        (via RunPod /start.sh)
+EXPOSE 8188 8888 22
+ENV RUNPOD_TCP_PORT_8188=8188
 
-# handler.py starts ComfyUI internally before runpod.serverless.start()
-CMD ["python", "/workspace/handler.py"]
+# ── Entrypoint ─────────────────────────────────────────────────────────────
+# run.sh startet /start.sh (JupyterLab+SSH) und dann ComfyUI oder handler.py
+COPY run.sh /run.sh
+CMD ["/run.sh"]

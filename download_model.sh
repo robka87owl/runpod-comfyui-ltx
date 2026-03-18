@@ -1,53 +1,62 @@
 #!/bin/bash
-# Downloads LTX Video 2.3 22B FP8 model weights + Audio VAE from HuggingFace.
-# Skips download if files already exist (e.g. via RunPod network volume).
-# Total download size: ~12–13 GB  →  attach a Network Volume to avoid re-downloads.
+# Downloads alle LTX Video 2.3 22B Distilled Modelle von HuggingFace.
+# Überspringt Dateien die bereits vorhanden sind (z.B. via Network Volume).
+# Gesamtgröße: ~20-25 GB – Network Volume dringend empfohlen!
+
+set -e
 
 MODEL_DIR="${MODEL_DIR:-/workspace/ComfyUI/models}"
-LTX_DIR="$MODEL_DIR/video_models/ltx_video"
-TEXT_ENC_DIR="$MODEL_DIR/text_encoders"
-AUDIO_VAE_DIR="$MODEL_DIR/audio_vae"
-
-mkdir -p "$LTX_DIR" "$TEXT_ENC_DIR" "$AUDIO_VAE_DIR"
-
 HF_BASE="https://huggingface.co/Lightricks/LTX-Video/resolve/main"
 
-# ── 1. LTX Video 2.3 22B FP8 (main model) ─────────────────────────────────
-LTX_FILE="$LTX_DIR/ltxv-2.3-22b-fp8.safetensors"
-LTX_URL="$HF_BASE/ltxv-2.3-22b-distilled-fp8.safetensors"
+# Verzeichnisse anlegen
+mkdir -p \
+    "$MODEL_DIR/unet" \
+    "$MODEL_DIR/text_encoders" \
+    "$MODEL_DIR/checkpoints" \
+    "$MODEL_DIR/vae" \
+    "$MODEL_DIR/latent_upscale_models"
 
-if [ ! -f "$LTX_FILE" ]; then
-    echo "[download] Downloading LTX Video 2.3 22B FP8 (~10–11 GB)..."
-    wget -q --show-progress -O "$LTX_FILE" "$LTX_URL"
-    echo "[download] Done: $LTX_FILE"
-else
-    echo "[download] LTX Video 2.3 22B FP8 already present, skipping."
-fi
+download() {
+    local URL="$1"
+    local DEST="$2"
+    if [ -f "$DEST" ]; then
+        echo "[skip] $(basename $DEST) bereits vorhanden."
+    else
+        echo "[download] $(basename $DEST) ..."
+        wget -q --show-progress -O "$DEST" "$URL"
+        echo "[ok] $(basename $DEST)"
+    fi
+}
 
-# ── 2. T5 Text Encoder FP8 ────────────────────────────────────────────────
-T5_FILE="$TEXT_ENC_DIR/t5xxl_fp8_e4m3fn_scaled.safetensors"
-T5_URL="$HF_BASE/t5xxl_fp8_e4m3fn_scaled.safetensors"
+# 1. Diffusion Model (Transformer only, FP8)
+download \
+    "$HF_BASE/ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled.safetensors" \
+    "$MODEL_DIR/unet/ltx-2.3-22b-distilled_transformer_only_fp8_input_scaled.safetensors"
 
-if [ ! -f "$T5_FILE" ]; then
-    echo "[download] Downloading T5 encoder FP8 (~4.8 GB)..."
-    wget -q --show-progress -O "$T5_FILE" "$T5_URL"
-    echo "[download] Done: $T5_FILE"
-else
-    echo "[download] T5 encoder already present, skipping."
-fi
+# 2. Text Encoder – Gemma 3 12B GGUF
+download \
+    "$HF_BASE/gemma-3-12b-it-IQ4_XS.gguf" \
+    "$MODEL_DIR/text_encoders/gemma-3-12b-it-IQ4_XS.gguf"
 
-# ── 3. Audio VAE (vocoder for Audio-Visual inference) ─────────────────────
-# Required by LTXVAudioVAELoader in the LTXV-2_3-22b_T2V_RA_V1 workflow
-AUDIO_FILE="$AUDIO_VAE_DIR/ltx-av-step-1751000_vocoder_24K.safetensors"
-AUDIO_URL="$HF_BASE/ltx-av-step-1751000_vocoder_24K.safetensors"
+# 3. Dual CLIP / Embeddings Connector
+download \
+    "$HF_BASE/LTX-2.3-22b-distilled_embeddings_connectors.safetensors" \
+    "$MODEL_DIR/text_encoders/LTX-2.3-22b-distilled_embeddings_connectors.safetensors"
 
-if [ ! -f "$AUDIO_FILE" ]; then
-    echo "[download] Downloading Audio VAE / vocoder (~1.5 GB)..."
-    wget -q --show-progress -O "$AUDIO_FILE" "$AUDIO_URL"
-    echo "[download] Done: $AUDIO_FILE"
-else
-    echo "[download] Audio VAE already present, skipping."
-fi
+# 4. Audio VAE
+download \
+    "$HF_BASE/LTX2.3-22b-distilled_audio_vae.safetensors" \
+    "$MODEL_DIR/checkpoints/LTX2.3-22b-distilled_audio_vae.safetensors"
 
-echo "[download] All models ready."
+# 5. Video VAE
+download \
+    "$HF_BASE/LTX-2.3-22b-distilled_video_vae.safetensors" \
+    "$MODEL_DIR/vae/LTX-2.3-22b-distilled_video_vae.safetensors"
 
+# 6. Spatial Upscaler
+download \
+    "$HF_BASE/LTX-2.3-spatial-upscaler-x2-1.0.safetensors" \
+    "$MODEL_DIR/latent_upscale_models/LTX-2.3-spatial-upscaler-x2-1.0.safetensors"
+
+echo ""
+echo "✅ Alle Modelle bereit in $MODEL_DIR"

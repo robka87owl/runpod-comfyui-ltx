@@ -1,5 +1,7 @@
 # 🎬 RunPod ComfyUI – LTX Video 2.3 22B FP8 (Audio-Visual)
 
+[![RunPod](https://api.runpod.io/badge/robka87owl/runpod-comfyui-ltx)](https://www.runpod.io/console/hub/robka87owl/runpod-comfyui-ltx)
+
 Custom ComfyUI Docker image for RunPod, built around the **LTX Video 2.3 22B FP8**
 model with native **Audio-Visual inference** – generates synchronised video + audio
 from a text prompt in a single pass.
@@ -134,10 +136,12 @@ of the workflow.
 
 ---
 
-## 📝 License
-
-MIT
-
-## 📧 Support
+## � Support
 
 For questions, feel free to send an email to info@bremer-software.biz
+
+---
+
+## �📝 License
+
+MIT

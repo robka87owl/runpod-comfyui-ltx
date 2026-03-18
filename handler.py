@@ -1,13 +1,11 @@
 """
-RunPod Handler for ComfyUI + LTX Video 2.3 22B FP8
+RunPod Serverless Handler für ComfyUI + LTX Video 2.3 22B FP8
 
-Two modes, selected automatically:
-  Pod mode     (RUNPOD_SERVERLESS unset): ComfyUI starts in the foreground.
-               Access via browser: https://<pod-id>-8188.proxy.runpod.net
-               ComfyUI Manager is available in the menu.
+Im Serverless-Modus (RUNPOD_SERVERLESS=1) wird dieser Handler von run.sh
+aufgerufen. ComfyUI läuft bereits im Hintergrund wenn der Handler startet.
 
-  Serverless   (RUNPOD_SERVERLESS=1): ComfyUI starts in the background.
-               Send workflow JSON via RunPod API, get Base64 video/audio back.
+Input:  { "workflow": { ...ComfyUI API JSON... }, "timeout": 300 }
+Output: { "prompt_id": "...", "outputs": [ { type, filename, mime, data } ] }
 """
 
 import runpod
@@ -16,25 +14,14 @@ import base64
 import os
 import subprocess
 import requests
-import sys
 from pathlib import Path
 
 COMFYUI_URL = "http://127.0.0.1:8188"
 COMFYUI_DIR = os.environ.get("COMFYUI_DIR", "/workspace/ComfyUI")
 OUTPUT_DIR  = Path(COMFYUI_DIR) / "output"
-SERVERLESS  = os.environ.get("RUNPOD_SERVERLESS", "").strip() == "1"
 
 
-# ── Init helpers ───────────────────────────────────────────────────────────
-
-def _download_models():
-    script = "/workspace/download_model.sh"
-    if os.path.exists(script):
-        print("[init] Running download_model.sh...")
-        subprocess.run(["bash", script], check=True)
-    else:
-        print("[init] download_model.sh not found, skipping.")
-
+# ── ComfyUI im Hintergrund starten (Serverless-Modus) ─────────────────────
 
 def _wait_for_comfyui(timeout: int = 120):
     deadline = time.time() + timeout
@@ -46,39 +33,30 @@ def _wait_for_comfyui(timeout: int = 120):
         except requests.exceptions.ConnectionError:
             pass
         time.sleep(2)
-    raise RuntimeError("ComfyUI did not start within timeout.")
+    raise RuntimeError("ComfyUI nicht erreichbar nach Timeout.")
 
 
-def _start_comfyui():
-    cmd = [
-        "python", "main.py",
-        "--listen", "0.0.0.0",
-        "--port", "8188",
-        "--cuda-malloc",
-    ]
-
-    if SERVERLESS:
-        # Background process – handler takes over after startup
-        print("[init] Serverless mode: starting ComfyUI in background...")
-        subprocess.Popen(cmd, cwd=COMFYUI_DIR)
-        _wait_for_comfyui(timeout=120)
-        print("[init] ComfyUI ready.")
-    else:
-        # Pod / interactive mode – block forever so the pod stays alive
-        # Access via: https://<pod-id>-8188.proxy.runpod.net
-        print("[pod] Pod mode: starting ComfyUI in foreground on port 8188...")
-        print("[pod] Open: https://<your-pod-id>-8188.proxy.runpod.net")
-        proc = subprocess.run(cmd, cwd=COMFYUI_DIR)
-        sys.exit(proc.returncode)
+def _start_comfyui_background():
+    print("[handler] Starte ComfyUI im Hintergrund...")
+    subprocess.Popen(
+        [
+            "python", "main.py",
+            "--listen", "0.0.0.0",
+            "--port", "8188",
+            "--cuda-malloc",
+            "--enable-manager-legacy-ui",
+        ],
+        cwd=COMFYUI_DIR,
+    )
+    _wait_for_comfyui(timeout=120)
+    print("[handler] ComfyUI bereit.")
 
 
-# ── Run init at module load ────────────────────────────────────────────────
-
-_download_models()
-_start_comfyui()   # exits here in pod mode, continues in serverless mode
+# Einmalig beim Worker-Start initialisieren
+_start_comfyui_background()
 
 
-# ── Helpers (serverless only) ──────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────
 
 def _queue_prompt(workflow: dict) -> str:
     r = requests.post(f"{COMFYUI_URL}/prompt", json={"prompt": workflow})
@@ -95,7 +73,7 @@ def _wait_for_completion(prompt_id: str, timeout: int = 600) -> dict:
             if prompt_id in history:
                 return history[prompt_id]["outputs"]
         time.sleep(3)
-    raise TimeoutError(f"Prompt {prompt_id} timed out after {timeout}s.")
+    raise TimeoutError(f"Prompt {prompt_id} Timeout nach {timeout}s.")
 
 
 def _collect_output_files(outputs: dict) -> list:
@@ -109,12 +87,11 @@ def _collect_output_files(outputs: dict) -> list:
                     with open(filepath, "rb") as f:
                         encoded = base64.b64encode(f.read()).decode("utf-8")
                     ext = filepath.suffix.lower().lstrip(".")
-                    if ext in ("mp4", "webm", "gif"):
-                        media_type = "video"
-                    elif ext in ("wav", "mp3", "flac", "ogg"):
-                        media_type = "audio"
-                    else:
-                        media_type = "image"
+                    media_type = (
+                        "video" if ext in ("mp4", "webm", "gif") else
+                        "audio" if ext in ("wav", "mp3", "flac", "ogg") else
+                        "image"
+                    )
                     results.append({
                         "type": media_type,
                         "filename": filename,
@@ -127,10 +104,6 @@ def _collect_output_files(outputs: dict) -> list:
 # ── Handler ────────────────────────────────────────────────────────────────
 
 def handler(job):
-    """
-    Input:  { "workflow": { ...ComfyUI API JSON... }, "timeout": 300 }
-    Output: { "prompt_id": "...", "outputs": [ { type, filename, mime, data } ] }
-    """
     job_input = job.get("input", {})
     workflow  = job_input.get("workflow")
     timeout   = int(job_input.get("timeout", 300))
@@ -139,17 +112,17 @@ def handler(job):
         return {"error": "Missing 'workflow' in job input."}
 
     try:
-        runpod.serverless.progress_update(job, "Queuing workflow...")
+        runpod.serverless.progress_update(job, "Workflow wird eingereiht...")
         prompt_id = _queue_prompt(workflow)
 
-        runpod.serverless.progress_update(job, f"Running inference ({prompt_id})...")
+        runpod.serverless.progress_update(job, f"Inferenz läuft ({prompt_id})...")
         outputs = _wait_for_completion(prompt_id, timeout=timeout)
 
-        runpod.serverless.progress_update(job, "Collecting output files...")
+        runpod.serverless.progress_update(job, "Ausgabedateien werden gesammelt...")
         files = _collect_output_files(outputs)
 
         if not files:
-            return {"error": "No output files found.", "prompt_id": prompt_id}
+            return {"error": "Keine Ausgabedateien gefunden.", "prompt_id": prompt_id}
 
         return {"prompt_id": prompt_id, "outputs": files}
 
@@ -157,5 +130,5 @@ def handler(job):
         return {"error": str(e)}
 
 
-# ── RunPod entrypoint — top level, NOT inside __main__ ────────────────────
+# ── RunPod Entrypoint ──────────────────────────────────────────────────────
 runpod.serverless.start({"handler": handler})
