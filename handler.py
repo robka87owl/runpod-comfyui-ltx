@@ -49,7 +49,16 @@ def _wait_for_comfyui(timeout: int = 120):
     raise RuntimeError("ComfyUI did not start within timeout.")
 
 
-# Start ComfyUI once when the worker container is initialised.
+# Download models if not already present, then start ComfyUI.
+def _download_models():
+    script = "/workspace/download_model.sh"
+    if os.path.exists(script):
+        print("[init] Running download_model.sh...")
+        subprocess.run(["bash", script], check=True)
+    else:
+        print("[init] download_model.sh not found, skipping.")
+
+_download_models()
 _start_comfyui()
 
 

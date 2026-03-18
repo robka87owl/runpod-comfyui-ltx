@@ -19,7 +19,7 @@ RUN git clone https://github.com/ltdrdata/ComfyUI-Manager.git \
     cd ComfyUI/custom_nodes/ComfyUI-Manager && \
     pip install -r requirements.txt
 
-# Install ComfyUI-LTXVideo node support (LTXV nodes + Audio-Visual inference)
+# Install ComfyUI-LTXVideo (LTXV nodes + Audio-Visual inference)
 RUN git clone https://github.com/Lightricks/ComfyUI-LTXVideo.git \
     ComfyUI/custom_nodes/ComfyUI-LTXVideo && \
     cd ComfyUI/custom_nodes/ComfyUI-LTXVideo && \
@@ -38,16 +38,14 @@ RUN git clone https://github.com/evanspearman/ComfyMath.git \
 # Install RunPod SDK & helpers
 RUN pip install runpod requests websocket-client Pillow
 
-# Copy handler and startup scripts
+# Copy only what actually exists in the repo
 COPY handler.py /workspace/handler.py
-COPY start.sh /workspace/start.sh
 COPY download_model.sh /workspace/download_model.sh
+RUN chmod +x /workspace/download_model.sh
 
-RUN chmod +x /workspace/start.sh /workspace/download_model.sh
-
-# Model will be downloaded at container start (not baked in to keep image lean)
-# Set model dir as env var so handler and scripts share it
+# Set model dir as env var so handler and download script share it
 ENV MODEL_DIR=/workspace/ComfyUI/models
 ENV COMFYUI_DIR=/workspace/ComfyUI
 
-CMD ["/workspace/start.sh"]
+# handler.py starts ComfyUI internally before runpod.serverless.start()
+CMD ["python", "/workspace/handler.py"]
