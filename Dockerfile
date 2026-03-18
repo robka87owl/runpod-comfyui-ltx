@@ -47,5 +47,8 @@ RUN chmod +x /workspace/download_model.sh
 ENV MODEL_DIR=/workspace/ComfyUI/models
 ENV COMFYUI_DIR=/workspace/ComfyUI
 
+# Expose ComfyUI web UI – RunPod shows this automatically in the Connect tab
+EXPOSE 8188
+
 # handler.py starts ComfyUI internally before runpod.serverless.start()
 CMD ["python", "/workspace/handler.py"]
