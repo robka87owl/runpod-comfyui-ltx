@@ -1,11 +1,10 @@
 """
 RunPod Serverless Handler für ComfyUI + LTX Video 2.3 22B FP8
 
-Im Serverless-Modus (RUNPOD_SERVERLESS=1) wird dieser Handler von run.sh
-aufgerufen. ComfyUI läuft bereits im Hintergrund wenn der Handler startet.
-
-Input:  { "workflow": { ...ComfyUI API JSON... }, "timeout": 300 }
-Output: { "prompt_id": "...", "outputs": [ { type, filename, mime, data } ] }
+Wichtig: runpod.serverless.start() muss sofort erreichbar sein damit
+der RunPod Health-Check nicht in einen Timeout läuft.
+ComfyUI startet daher im Hintergrund-Thread – der Handler wartet
+erst auf ComfyUI wenn ein Job tatsächlich reinkommt.
 """
 
 import runpod
@@ -14,30 +13,22 @@ import base64
 import os
 import subprocess
 import requests
+import threading
 from pathlib import Path
 
 COMFYUI_URL = "http://127.0.0.1:8188"
 COMFYUI_DIR = os.environ.get("COMFYUI_DIR", "/workspace/ComfyUI")
 OUTPUT_DIR  = Path(COMFYUI_DIR) / "output"
 
-
-# ── ComfyUI im Hintergrund starten (Serverless-Modus) ─────────────────────
-
-def _wait_for_comfyui(timeout: int = 120):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            r = requests.get(f"{COMFYUI_URL}/system_stats", timeout=3)
-            if r.status_code == 200:
-                return
-        except requests.exceptions.ConnectionError:
-            pass
-        time.sleep(2)
-    raise RuntimeError("ComfyUI nicht erreichbar nach Timeout.")
+# Shared event – wird gesetzt sobald ComfyUI bereit ist
+_comfyui_ready = threading.Event()
 
 
-def _start_comfyui_background():
-    print("[handler] Starte ComfyUI im Hintergrund...")
+# ── ComfyUI-Start im Hintergrund ───────────────────────────────────────────
+
+def _comfyui_thread():
+    """Läuft in einem eigenen Thread – blockiert den Handler nicht."""
+    print("[init] ComfyUI wird im Hintergrund gestartet...")
     subprocess.Popen(
         [
             "python", "main.py",
@@ -48,12 +39,21 @@ def _start_comfyui_background():
         ],
         cwd=COMFYUI_DIR,
     )
-    _wait_for_comfyui(timeout=120)
-    print("[handler] ComfyUI bereit.")
+    # Warten bis ComfyUI API antwortet
+    while True:
+        try:
+            r = requests.get(f"{COMFYUI_URL}/system_stats", timeout=3)
+            if r.status_code == 200:
+                print("[init] ComfyUI ist bereit.")
+                _comfyui_ready.set()
+                return
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(2)
 
 
-# Einmalig beim Worker-Start initialisieren
-_start_comfyui_background()
+# Sofort im Hintergrund starten – blockiert NICHT
+threading.Thread(target=_comfyui_thread, daemon=True).start()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -104,12 +104,21 @@ def _collect_output_files(outputs: dict) -> list:
 # ── Handler ────────────────────────────────────────────────────────────────
 
 def handler(job):
+    """
+    Input:  { "workflow": { ...ComfyUI API JSON... }, "timeout": 300 }
+    Output: { "prompt_id": "...", "outputs": [ { type, filename, mime, data } ] }
+    """
     job_input = job.get("input", {})
     workflow  = job_input.get("workflow")
     timeout   = int(job_input.get("timeout", 300))
 
     if not workflow:
         return {"error": "Missing 'workflow' in job input."}
+
+    # Warten bis ComfyUI bereit – erst hier, nicht beim Start
+    runpod.serverless.progress_update(job, "Warte auf ComfyUI...")
+    if not _comfyui_ready.wait(timeout=120):
+        return {"error": "ComfyUI nicht bereit nach 120s."}
 
     try:
         runpod.serverless.progress_update(job, "Workflow wird eingereiht...")
@@ -130,5 +139,5 @@ def handler(job):
         return {"error": str(e)}
 
 
-# ── RunPod Entrypoint ──────────────────────────────────────────────────────
+# ── RunPod Entrypoint – sofort erreichbar für Health-Check ────────────────
 runpod.serverless.start({"handler": handler})
