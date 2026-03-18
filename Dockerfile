@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1
 
 SHELL ["/bin/bash", "-c"]
 
-# System dependencies
+# System dependencies test
 RUN apt-get update && apt-get install -y \
     git wget curl libgl1 libglib2.0-0 ffmpeg \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
