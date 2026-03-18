@@ -1,0 +1,38 @@
+{
+  "title": "ComfyUI – LTX Video 2.3 22B FP8 (Audio-Visual)",
+  "description": "ComfyUI serverless worker with LTX Video 2.3 22B FP8. Generates synchronised video + audio from a text prompt. Includes ComfyUI-Manager, ComfyUI-LTXVideo, VideoHelperSuite and ComfyMath.",
+  "type": "serverless",
+  "category": "video",
+  "iconUrl": "https://raw.githubusercontent.com/comfyanonymous/ComfyUI/master/web/favicon.png",
+  "minVram": 24,
+  "env": [
+    {
+      "key": "RUNPOD_SERVERLESS",
+      "input": {
+        "name": "Serverless Mode",
+        "description": "Set to 1 to run as RunPod serverless worker",
+        "type": "string",
+        "default": "1"
+      }
+    },
+    {
+      "key": "MODEL_DIR",
+      "input": {
+        "name": "Model Directory",
+        "description": "Path where model weights are stored (use a network volume here)",
+        "type": "string",
+        "default": "/workspace/ComfyUI/models"
+      }
+    },
+    {
+      "key": "COMFYUI_DIR",
+      "input": {
+        "name": "ComfyUI Directory",
+        "description": "Path to the ComfyUI installation",
+        "type": "string",
+        "default": "/workspace/ComfyUI"
+      }
+    }
+  ],
+  "readme": "./README.md"
+}
