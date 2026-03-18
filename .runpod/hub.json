@@ -1,23 +1,28 @@
 {
-  "title": "ComfyUI – LTX Video 2.3 22B FP8 (Audio-Visual)",
+  "title": "ComfyUI \u2013 LTX Video 2.3 22B FP8 (Audio-Visual)",
   "description": "ComfyUI serverless worker for LTX Video 2.3 22B FP8. Generates synchronised video + audio from a text prompt. Includes ComfyUI-Manager, ComfyUI-LTXVideo, VideoHelperSuite and ComfyMath.",
   "type": "serverless",
   "category": "video",
   "iconUrl": "https://raw.githubusercontent.com/comfyanonymous/ComfyUI/master/web/favicon.png",
-
   "config": {
     "runsOn": "GPU",
     "containerDiskInGb": 30,
     "gpuCount": 1,
     "gpuIds": "AMPERE_24,ADA_24",
     "allowedCudaVersions": [
-      "12.8", "12.7", "12.6", "12.5", "12.4",
-      "12.3", "12.2", "12.1", "12.0"
+      "12.8",
+      "12.7",
+      "12.6",
+      "12.5",
+      "12.4",
+      "12.3",
+      "12.2",
+      "12.1",
+      "12.0"
     ],
-
     "presets": [
       {
-        "name": "Single GPU (24 GB) – default",
+        "name": "Single GPU (24 GB) \u2013 default",
         "defaults": {
           "RUNPOD_SERVERLESS": "1",
           "MODEL_DIR": "/workspace/ComfyUI/models",
@@ -25,7 +30,6 @@
         }
       }
     ],
-
     "env": [
       {
         "key": "RUNPOD_SERVERLESS",
@@ -49,6 +53,17 @@
           "description": "Path to the ComfyUI installation inside the container.",
           "default": "/workspace/ComfyUI",
           "advanced": true
+        }
+      },
+      {
+        "key": "SKIP_MODEL_DOWNLOAD",
+        "input": {
+          "name": "Modell-Download \u00fcberspringen",
+          "type": "boolean",
+          "description": "Auf 1 setzen wenn Modelle bereits auf einem Network Volume liegen. Spart Zeit beim Start.",
+          "default": false,
+          "trueValue": "1",
+          "falseValue": "0"
         }
       }
     ]

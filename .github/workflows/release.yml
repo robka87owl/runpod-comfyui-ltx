@@ -1,0 +1,171 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+    # Nur auslösen wenn relevante Dateien geändert wurden
+    paths:
+      - 'Dockerfile'
+      - 'handler.py'
+      - 'run.sh'
+      - 'download_model.sh'
+      - 'client.py'
+      - '.runpod/**'
+      - 'notebooks/**'
+      - 'workflows/**'
+
+  # Manueller Trigger mit optionaler Beschreibung
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch    # v1.0.0 → v1.0.1  (Bugfix)
+          - minor    # v1.0.0 → v1.1.0  (Neues Feature)
+          - major    # v1.0.0 → v2.0.0  (Breaking Change)
+      description:
+        description: 'Release-Beschreibung (optional)'
+        required: false
+        default: ''
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # ── 1. Repo auschecken ──────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Gesamte Historie für Changelog
+
+      # ── 2. Letzte Version ermitteln ─────────────────────────────────────
+      - name: Get latest version
+        id: version
+        run: |
+          # Letzten Tag holen (oder v0.0.0 wenn noch keiner existiert)
+          LATEST=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$LATEST" ]; then
+            LATEST="v0.0.0"
+          fi
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          echo "Aktuelle Version: $LATEST"
+
+      # ── 3. Neue Version berechnen ───────────────────────────────────────
+      - name: Bump version
+        id: bump
+        run: |
+          LATEST="${{ steps.version.outputs.latest }}"
+          BUMP="${{ github.event.inputs.bump || 'patch' }}"
+
+          # Versionsteile extrahieren
+          VERSION="${LATEST#v}"
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+
+          # Bump anwenden
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+          esac
+
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Neue Version: $NEW_VERSION"
+
+      # ── 4. Changelog aus Commits generieren ─────────────────────────────
+      - name: Generate changelog
+        id: changelog
+        run: |
+          LATEST="${{ steps.version.outputs.latest }}"
+          NEW="${{ steps.bump.outputs.new }}"
+          CUSTOM_DESC="${{ github.event.inputs.description }}"
+
+          # Commits seit letztem Release gruppieren
+          if git rev-parse "$LATEST" >/dev/null 2>&1; then
+            RANGE="${LATEST}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+
+          # Commits nach Typ kategorisieren (konventionelle Commits)
+          FEATURES=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^(feat|add|new)[\(:!]" || true)
+          FIXES=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^(fix|bug|hotfix|patch)[\(:!]" || true)
+          CHANGES=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -iE "^(refactor|update|improve|change|chore)[\(:!]" || true)
+          OTHER=$(git log $RANGE --oneline --no-merges --pretty="%s" | grep -viE "^(feat|add|new|fix|bug|hotfix|patch|refactor|update|improve|change|chore)[\(:!]" || true)
+
+          # Changelog zusammenbauen
+          NOTES=""
+
+          if [ -n "$CUSTOM_DESC" ]; then
+            NOTES="${NOTES}## 📝 Beschreibung\n${CUSTOM_DESC}\n\n"
+          fi
+
+          if [ -n "$FEATURES" ]; then
+            NOTES="${NOTES}## ✨ Neue Features\n"
+            while IFS= read -r line; do
+              NOTES="${NOTES}- ${line}\n"
+            done <<< "$FEATURES"
+            NOTES="${NOTES}\n"
+          fi
+
+          if [ -n "$FIXES" ]; then
+            NOTES="${NOTES}## 🐛 Bugfixes\n"
+            while IFS= read -r line; do
+              NOTES="${NOTES}- ${line}\n"
+            done <<< "$FIXES"
+            NOTES="${NOTES}\n"
+          fi
+
+          if [ -n "$CHANGES" ]; then
+            NOTES="${NOTES}## 🔧 Änderungen\n"
+            while IFS= read -r line; do
+              NOTES="${NOTES}- ${line}\n"
+            done <<< "$CHANGES"
+            NOTES="${NOTES}\n"
+          fi
+
+          if [ -n "$OTHER" ]; then
+            NOTES="${NOTES}## 📦 Sonstiges\n"
+            while IFS= read -r line; do
+              NOTES="${NOTES}- ${line}\n"
+            done <<< "$OTHER"
+            NOTES="${NOTES}\n"
+          fi
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Automatisches Release ${NEW}\n"
+          fi
+
+          # Datum und Verzeichnis-Info anhängen
+          NOTES="${NOTES}---\n**Release:** ${NEW}  \n**Datum:** $(date '+%Y-%m-%d')  \n**Commit:** ${{ github.sha }}"
+
+          # In Datei schreiben (wegen Sonderzeichen)
+          printf "%b" "$NOTES" > /tmp/release_notes.md
+          cat /tmp/release_notes.md
+
+      # ── 5. Tag erstellen und pushen ─────────────────────────────────────
+      - name: Create tag
+        run: |
+          NEW="${{ steps.bump.outputs.new }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW" -m "Release $NEW"
+          git push origin "$NEW"
+
+      # ── 6. GitHub Release erstellen ─────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.new }}
+          name: ${{ steps.bump.outputs.new }}
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: false

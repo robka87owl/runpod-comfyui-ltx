@@ -1,16 +1,19 @@
 #!/bin/bash
 # RunPod Startup Script
-# Startet die RunPod-Basisdienste (JupyterLab + SSH) im Hintergrund,
-# lädt dann die Modelle und startet ComfyUI.
 
-# ── RunPod Basisdienste starten (JupyterLab auf 8888, SSH auf 22) ──────────
+# ── RunPod Basisdienste (JupyterLab + SSH) im Hintergrund ─────────────────
 /start.sh &
-
-# Kurz warten bis Basisdienste bereit sind
 sleep 3
 
-# ── Modelle herunterladen falls nötig ─────────────────────────────────────
-bash /workspace/download_model.sh
+# ── Modelle herunterladen – nur wenn SKIP_MODEL_DOWNLOAD nicht gesetzt ─────
+# RunPod Hub-Tests setzen SKIP_MODEL_DOWNLOAD=1 damit der Health-Check
+# nicht auf einen ~20 GB Download warten muss.
+if [ "${SKIP_MODEL_DOWNLOAD}" != "1" ]; then
+    echo "[run.sh] Starte Modell-Download..."
+    bash /workspace/download_model.sh
+else
+    echo "[run.sh] SKIP_MODEL_DOWNLOAD=1 – überspringe Download (Test/Dev-Modus)"
+fi
 
 # ── Modus entscheiden ─────────────────────────────────────────────────────
 if [ "$RUNPOD_SERVERLESS" = "1" ]; then
@@ -18,8 +21,6 @@ if [ "$RUNPOD_SERVERLESS" = "1" ]; then
     exec python /workspace/handler.py
 else
     echo "[run.sh] Pod-Modus: starte ComfyUI auf Port 8188"
-    echo "[run.sh] ComfyUI:   https://\$RUNPOD_POD_ID-8188.proxy.runpod.net"
-    echo "[run.sh] JupyterLab: https://\$RUNPOD_POD_ID-8888.proxy.runpod.net"
     cd /workspace/ComfyUI && exec python main.py \
         --listen 0.0.0.0 \
         --port 8188 \
