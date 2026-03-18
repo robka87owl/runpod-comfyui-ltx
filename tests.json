@@ -1,214 +1,133 @@
 {
-  "inference": [
+  "tests": [
     {
-      "name": "Text-to-Video (LTX 22B FP8) – short smoke test",
-      "payload": {
-        "input": {
-          "timeout": 300,
-          "workflow": {
-            "1": {
-              "inputs": {
-                "ckpt_name": "ltxv-2.3-22b-fp8.safetensors"
-              },
-              "class_type": "LTXVModel",
-              "_meta": { "title": "Load LTX Video Model" }
+      "name": "ltxv_22b_t2v_smoke_test",
+      "timeout": 300000,
+      "input": {
+        "workflow": {
+          "1": {
+            "inputs": { "ckpt_name": "ltxv-2.3-22b-fp8.safetensors" },
+            "class_type": "LTXVModel",
+            "_meta": { "title": "Load LTX Video Model" }
+          },
+          "3": {
+            "inputs": {
+              "text": "A calm ocean wave rolling onto a sandy beach at golden hour, cinematic",
+              "clip": ["1", 1]
             },
-            "3": {
-              "inputs": {
-                "text": "A calm ocean wave rolling onto a sandy beach at golden hour, cinematic",
-                "clip": ["1", 1]
-              },
-              "class_type": "CLIPTextEncode",
-              "_meta": { "title": "CLIP Text Encode (Positive)" }
+            "class_type": "CLIPTextEncode",
+            "_meta": { "title": "Positive Prompt" }
+          },
+          "4": {
+            "inputs": {
+              "text": "blurry, low quality, watermark, text",
+              "clip": ["1", 1]
             },
-            "4": {
-              "inputs": {
-                "text": "blurry, low quality, watermark, text, artifacts",
-                "clip": ["1", 1]
-              },
-              "class_type": "CLIPTextEncode",
-              "_meta": { "title": "CLIP Text Encode (Negative)" }
+            "class_type": "CLIPTextEncode",
+            "_meta": { "title": "Negative Prompt" }
+          },
+          "8": {
+            "inputs": { "sampler_name": "euler" },
+            "class_type": "KSamplerSelect"
+          },
+          "9": {
+            "inputs": {
+              "steps": 20, "max_shift": 2.05, "base_shift": 0.95,
+              "stretch": true, "terminal": 0.1, "latent": ["28", 0]
             },
-            "8": {
-              "inputs": { "sampler_name": "euler" },
-              "class_type": "KSamplerSelect",
-              "_meta": { "title": "KSamplerSelect" }
+            "class_type": "LTXVScheduler"
+          },
+          "11": { "inputs": { "noise_seed": 42 }, "class_type": "RandomNoise" },
+          "12": {
+            "inputs": { "samples": ["29", 0], "vae": ["1", 2] },
+            "class_type": "VAEDecode"
+          },
+          "13": {
+            "inputs": { "ckpt_name": "ltx-av-step-1751000_vocoder_24K.safetensors" },
+            "class_type": "LTXVAudioVAELoader"
+          },
+          "14": {
+            "inputs": { "samples": ["29", 1], "audio_vae": ["13", 0] },
+            "class_type": "LTXVAudioVAEDecode"
+          },
+          "15": {
+            "inputs": {
+              "frame_rate": ["23", 0], "loop_count": 0,
+              "filename_prefix": "test_output", "format": "video/h264-mp4",
+              "pix_fmt": "yuv420p", "crf": 19, "save_metadata": true,
+              "trim_to_audio": false, "pingpong": false, "save_output": true,
+              "images": ["12", 0], "audio": ["14", 0]
             },
-            "9": {
-              "inputs": {
-                "steps": 20,
-                "max_shift": 2.05,
-                "base_shift": 0.95,
-                "stretch": true,
-                "terminal": 0.1,
-                "latent": ["28", 0]
-              },
-              "class_type": "LTXVScheduler",
-              "_meta": { "title": "LTXVScheduler" }
+            "class_type": "VHS_VideoCombine"
+          },
+          "17": {
+            "inputs": {
+              "skip_blocks": "29", "model": ["28", 1],
+              "positive": ["22", 0], "negative": ["22", 1],
+              "parameters": ["18", 0]
             },
-            "11": {
-              "inputs": { "noise_seed": 42 },
-              "class_type": "RandomNoise",
-              "_meta": { "title": "RandomNoise" }
+            "class_type": "MultimodalGuider"
+          },
+          "18": {
+            "inputs": {
+              "modality": "VIDEO", "cfg": 3, "stg": 0,
+              "rescale": 0, "modality_scale": 3, "parameters": ["19", 0]
             },
-            "12": {
-              "inputs": {
-                "samples": ["29", 0],
-                "vae": ["1", 2]
-              },
-              "class_type": "VAEDecode",
-              "_meta": { "title": "VAE Decode" }
+            "class_type": "GuiderParameters"
+          },
+          "19": {
+            "inputs": { "modality": "AUDIO", "cfg": 7, "stg": 0, "rescale": 0, "modality_scale": 3 },
+            "class_type": "GuiderParameters"
+          },
+          "22": {
+            "inputs": { "frame_rate": ["23", 0], "positive": ["3", 0], "negative": ["4", 0] },
+            "class_type": "LTXVConditioning"
+          },
+          "23": { "inputs": { "value": 25 }, "class_type": "FloatConstant" },
+          "26": {
+            "inputs": { "frames_number": ["27", 0], "frame_rate": ["42", 0], "batch_size": 1 },
+            "class_type": "LTXVEmptyLatentAudio"
+          },
+          "27": { "inputs": { "value": 49 }, "class_type": "INTConstant" },
+          "28": {
+            "inputs": { "video_latent": ["43", 0], "audio_latent": ["26", 0], "model": ["44", 0] },
+            "class_type": "LTXVConcatAVLatent"
+          },
+          "29": {
+            "inputs": { "av_latent": ["41", 0], "model": ["28", 1] },
+            "class_type": "LTXVSeparateAVLatent"
+          },
+          "41": {
+            "inputs": {
+              "noise": ["11", 0], "guider": ["17", 0], "sampler": ["8", 0],
+              "sigmas": ["9", 0], "latent_image": ["28", 0]
             },
-            "13": {
-              "inputs": {
-                "ckpt_name": "ltx-av-step-1751000_vocoder_24K.safetensors"
-              },
-              "class_type": "LTXVAudioVAELoader",
-              "_meta": { "title": "LTXV Audio VAE Loader" }
-            },
-            "14": {
-              "inputs": {
-                "samples": ["29", 1],
-                "audio_vae": ["13", 0]
-              },
-              "class_type": "LTXVAudioVAEDecode",
-              "_meta": { "title": "LTXV Audio VAE Decode" }
-            },
-            "15": {
-              "inputs": {
-                "frame_rate": ["23", 0],
-                "loop_count": 0,
-                "filename_prefix": "test_output",
-                "format": "video/h264-mp4",
-                "pix_fmt": "yuv420p",
-                "crf": 19,
-                "save_metadata": true,
-                "trim_to_audio": false,
-                "pingpong": false,
-                "save_output": true,
-                "images": ["12", 0],
-                "audio": ["14", 0]
-              },
-              "class_type": "VHS_VideoCombine",
-              "_meta": { "title": "Video Combine" }
-            },
-            "17": {
-              "inputs": {
-                "skip_blocks": "29",
-                "model": ["28", 1],
-                "positive": ["22", 0],
-                "negative": ["22", 1],
-                "parameters": ["18", 0]
-              },
-              "class_type": "MultimodalGuider",
-              "_meta": { "title": "Multimodal Guider" }
-            },
-            "18": {
-              "inputs": {
-                "modality": "VIDEO",
-                "cfg": 3,
-                "stg": 0,
-                "rescale": 0,
-                "modality_scale": 3,
-                "parameters": ["19", 0]
-              },
-              "class_type": "GuiderParameters",
-              "_meta": { "title": "Guider Parameters VIDEO" }
-            },
-            "19": {
-              "inputs": {
-                "modality": "AUDIO",
-                "cfg": 7,
-                "stg": 0,
-                "rescale": 0,
-                "modality_scale": 3
-              },
-              "class_type": "GuiderParameters",
-              "_meta": { "title": "Guider Parameters AUDIO" }
-            },
-            "22": {
-              "inputs": {
-                "frame_rate": ["23", 0],
-                "positive": ["3", 0],
-                "negative": ["4", 0]
-              },
-              "class_type": "LTXVConditioning",
-              "_meta": { "title": "LTXVConditioning" }
-            },
-            "23": {
-              "inputs": { "value": 25 },
-              "class_type": "FloatConstant",
-              "_meta": { "title": "Float Constant (FPS)" }
-            },
-            "26": {
-              "inputs": {
-                "frames_number": ["27", 0],
-                "frame_rate": ["42", 0],
-                "batch_size": 1
-              },
-              "class_type": "LTXVEmptyLatentAudio",
-              "_meta": { "title": "LTXV Empty Latent Audio" }
-            },
-            "27": {
-              "inputs": { "value": 49 },
-              "class_type": "INTConstant",
-              "_meta": { "title": "INT Constant (frames – reduced for test)" }
-            },
-            "28": {
-              "inputs": {
-                "video_latent": ["43", 0],
-                "audio_latent": ["26", 0],
-                "model": ["44", 0]
-              },
-              "class_type": "LTXVConcatAVLatent",
-              "_meta": { "title": "LTXV Concat AV Latent" }
-            },
-            "29": {
-              "inputs": {
-                "av_latent": ["41", 0],
-                "model": ["28", 1]
-              },
-              "class_type": "LTXVSeparateAVLatent",
-              "_meta": { "title": "LTXV Separate AV Latent" }
-            },
-            "41": {
-              "inputs": {
-                "noise": ["11", 0],
-                "guider": ["17", 0],
-                "sampler": ["8", 0],
-                "sigmas": ["9", 0],
-                "latent_image": ["28", 0]
-              },
-              "class_type": "SamplerCustomAdvanced",
-              "_meta": { "title": "SamplerCustomAdvanced" }
-            },
-            "42": {
-              "inputs": { "a": ["23", 0] },
-              "class_type": "CM_FloatToInt",
-              "_meta": { "title": "FloatToInt" }
-            },
-            "43": {
-              "inputs": {
-                "width": 512,
-                "height": 320,
-                "length": ["27", 0],
-                "batch_size": 1
-              },
-              "class_type": "EmptyLTXVLatentVideo",
-              "_meta": { "title": "EmptyLTXVLatentVideo (reduced for test)" }
-            },
-            "44": {
-              "inputs": {
-                "torch_compile": false,
-                "disable_backup": false,
-                "model": ["1", 0]
-              },
-              "class_type": "LTXVSequenceParallelMultiGPUPatcher",
-              "_meta": { "title": "LTXVSequenceParallelMultiGPUPatcher" }
-            }
+            "class_type": "SamplerCustomAdvanced"
+          },
+          "42": { "inputs": { "a": ["23", 0] }, "class_type": "CM_FloatToInt" },
+          "43": {
+            "inputs": { "width": 512, "height": 320, "length": ["27", 0], "batch_size": 1 },
+            "class_type": "EmptyLTXVLatentVideo"
+          },
+          "44": {
+            "inputs": { "torch_compile": false, "disable_backup": false, "model": ["1", 0] },
+            "class_type": "LTXVSequenceParallelMultiGPUPatcher"
           }
         }
       }
     }
-  ]
+  ],
+  "config": {
+    "gpuTypeId": "NVIDIA RTX A5000",
+    "gpuCount": 1,
+    "allowedCudaVersions": [
+      "12.8", "12.7", "12.6", "12.5", "12.4",
+      "12.3", "12.2", "12.1", "12.0"
+    ],
+    "env": [
+      { "key": "RUNPOD_SERVERLESS", "value": "1" },
+      { "key": "MODEL_DIR", "value": "/workspace/ComfyUI/models" },
+      { "key": "COMFYUI_DIR", "value": "/workspace/ComfyUI" }
+    ]
+  }
 }
